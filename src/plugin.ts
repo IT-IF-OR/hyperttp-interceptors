@@ -1,14 +1,10 @@
 import type {
-  HyperCore,
   HyperPlugin,
   InternalRequest,
   HttpClientOptions,
+  HttpResponse,
 } from "@hyperttp/core";
 import { InterceptorManager } from "./utils/InterceptorManager.js";
-
-interface InterceptorHyperCore extends HyperCore {
-  interceptors?: InterceptorManager;
-}
 
 export type Method =
   | "GET"
@@ -19,50 +15,58 @@ export type Method =
   | "DELETE"
   | "HEAD";
 
-export function withInterceptors(client: HyperCore): InterceptorHyperCore {
-  const manager = new InterceptorManager();
-  const originalDispatch = client.dispatch;
-
-  client.dispatch = async <T>(req: InternalRequest): Promise<T> => {
-    const requestUrl = typeof req.url === "string" ? req.url : req.url.getURL();
-
-    const modifiedReq = await manager.applyRequest({
-      url: requestUrl,
-      method: req.method,
-      headers: req.headers,
-      body: req.body,
-    });
-
-    const response = await originalDispatch({
-      ...req,
-      ...modifiedReq,
-      method: (modifiedReq.method ?? req.method) as Method,
-    });
-
-    const interceptedResponse = await manager.applyResponse({
-      status: response.status,
-      headers: response.headers,
-      body: response.body,
-      url: response.url ?? requestUrl,
-    });
-
-    return interceptedResponse as T;
-  };
-
-  const extended = client as InterceptorHyperCore;
-  extended.interceptors = manager;
-  return extended;
-}
-
 declare module "@hyperttp/core" {
+  interface HyperCore {
+    interceptors?: InterceptorManager;
+  }
+
   interface HyperttpPluginsExtension {
-    interceptors?: { enabled: boolean };
+    interceptors?: { enabled?: boolean };
   }
 }
 
-export const InterceptorsPlugin: HyperPlugin = {
-  name: "hyperttp-interceptors",
-  phase: "PREPARE",
-  enabled: (config: HttpClientOptions) => !!config.interceptors?.enabled,
-  apply: (client: HyperCore) => withInterceptors(client),
-};
+export function withInterceptors(): HyperPlugin {
+  let manager: InterceptorManager;
+
+  return {
+    name: "hyperttp-interceptors",
+    phase: "PREPARE",
+    enabled: (config: HttpClientOptions) => !!config.interceptors?.enabled,
+
+    setup(core) {
+      manager = new InterceptorManager();
+      core.interceptors = manager;
+    },
+
+    wrapDispatch: (next) => {
+      return async <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
+        const modifiedReqData = await manager.applyRequest({
+          url: req.url,
+          method: req.method,
+          headers: req.headers,
+          body: req.body,
+        });
+
+        const finalReq: InternalRequest = {
+          ...req,
+          ...modifiedReqData,
+          method: (modifiedReqData.method ?? req.method) as Method,
+        };
+
+        const response = await next<T>(finalReq);
+
+        const interceptedResponseData = await manager.applyResponse({
+          status: response.status,
+          headers: response.headers,
+          body: response.body,
+          url: response.url ?? req.url,
+        });
+
+        return {
+          ...response,
+          ...interceptedResponseData,
+        };
+      };
+    },
+  };
+}

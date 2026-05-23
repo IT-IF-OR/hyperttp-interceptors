@@ -1,7 +1,7 @@
 export interface InterceptorOptions {
   /**
-   * @ru Включить перехватчика
-   * @en Enable interceptor
+   * @ru Включить перехватчики
+   * @en Enable interceptors
    */
   enabled?: boolean;
 }
@@ -9,14 +9,14 @@ export interface InterceptorOptions {
 export type RequestInterceptor = (config: {
   url: string;
   method: string;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>;
   body?: any;
 }) => any | Promise<any>;
 
 export type ResponseInterceptor = (response: {
   status: number;
-  headers: Record<string, any>;
-  body: Buffer;
+  headers: Record<string, string | string[]>;
+  body: any;
   url: string;
 }) => any | Promise<any>;
 
