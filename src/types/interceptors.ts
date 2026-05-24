@@ -19,9 +19,3 @@ export type ResponseInterceptor = (response: {
   body: any;
   url: string;
 }) => any | Promise<any>;
-
-/**
- * @ru Данные тела запроса
- * @en Request body data
- */
-export type RequestBodyData = any | null | undefined;

@@ -1,7 +1,6 @@
 import {
   RequestInterceptor,
   ResponseInterceptor,
-  RequestBodyData,
 } from "../types/interceptors.js";
 
 export class InterceptorManager {
