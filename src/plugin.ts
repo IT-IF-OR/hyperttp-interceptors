@@ -5,6 +5,7 @@ import type {
   HttpResponse,
 } from "@hyperttp/core";
 import { InterceptorManager } from "./utils/InterceptorManager.js";
+import type { InterceptorOptions } from "./types/interceptors.js";
 
 export type Method =
   | "GET"
@@ -16,12 +17,12 @@ export type Method =
   | "HEAD";
 
 declare module "@hyperttp/core" {
-  interface HyperCore {
+  interface PluginContext {
     interceptors?: InterceptorManager;
   }
 
-  interface HyperttpPluginsExtension {
-    interceptors?: { enabled?: boolean };
+  interface HttpClientOptions {
+    interceptors?: InterceptorOptions;
   }
 }
 
@@ -39,33 +40,24 @@ export function withInterceptors(): HyperPlugin {
     },
 
     wrapDispatch: (next) => {
-      return async <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
-        const modifiedReqData = await manager.applyRequest({
-          url: req.url,
-          method: req.method,
-          headers: req.headers,
-          body: req.body,
-        });
+      return <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
+        if (!manager.hasRequest && !manager.hasResponse) {
+          return next<T>(req);
+        }
 
-        const finalReq: InternalRequest = {
-          ...req,
-          ...modifiedReqData,
-          method: (modifiedReqData.method ?? req.method) as Method,
-        };
+        const reqResult = manager.applyRequest(req);
 
-        const response = await next<T>(finalReq);
+        if (reqResult instanceof Promise) {
+          return reqResult.then((finalReq) => {
+            return next<T>(finalReq || req).then((res) =>
+              manager.applyResponse(res),
+            );
+          });
+        }
 
-        const interceptedResponseData = await manager.applyResponse({
-          status: response.status,
-          headers: response.headers,
-          body: response.body,
-          url: response.url ?? req.url,
-        });
-
-        return {
-          ...response,
-          ...interceptedResponseData,
-        };
+        return next<T>(reqResult || req).then((res) =>
+          manager.applyResponse(res),
+        ) as Promise<HttpResponse<T>>;
       };
     },
   };

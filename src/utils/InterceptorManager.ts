@@ -4,77 +4,111 @@ import {
   RequestBodyData,
 } from "../types/interceptors.js";
 
-/**
- * @class InterceptorManager
- * @ru Управляет регистрацией и последовательным выполнением перехватчиков запроса и ответа.
- */
 export class InterceptorManager {
   private requestInterceptors: RequestInterceptor[] = [];
   private responseInterceptors: ResponseInterceptor[] = [];
 
-  /**
-   * @ru Добавляет перехватчик запроса в цепочку.
-   */
+  public hasRequest = false;
+  public hasResponse = false;
+
   addRequest(interceptor: RequestInterceptor): void {
     this.requestInterceptors.push(interceptor);
+    this.hasRequest = true;
   }
 
-  /**
-   * @ru Добавляет перехватчик ответа в цепочку.
-   */
   addResponse(interceptor: ResponseInterceptor): void {
     this.responseInterceptors.push(interceptor);
+    this.hasResponse = true;
   }
 
   /**
-   * @ru Последовательно применяет все перехватчики к конфигурации запроса.
+   * Применяет реквест-интерцепторы.
+   * Возвращает либо измененный config, либо Promise с ним.
    */
-  async applyRequest(config: {
-    url: string;
-    method: string;
-    headers: Record<string, string | string[]>;
-    body?: RequestBodyData;
-  }) {
-    if (this.requestInterceptors.length === 0) return config;
+  applyRequest(config: any): any {
     let result = config;
+    const len = this.requestInterceptors.length;
 
-    for (const interceptor of this.requestInterceptors) {
-      const nextConfig = await interceptor(result);
-      if (nextConfig) {
+    for (let i = 0; i < len; i++) {
+      const nextConfig = this.requestInterceptors[i](result);
+
+      if (nextConfig instanceof Promise) {
+        return this.applyRequestAsync(i, nextConfig, result);
+      }
+
+      if (nextConfig) result = nextConfig;
+    }
+    return result;
+  }
+
+  private async applyRequestAsync(
+    startIndex: number,
+    currentPromise: Promise<any>,
+    currentResult: any,
+  ): Promise<any> {
+    let result = currentResult;
+
+    const resolved = await currentPromise;
+    if (resolved) result = resolved;
+
+    const len = this.requestInterceptors.length;
+    for (let i = startIndex + 1; i < len; i++) {
+      const nextConfig = this.requestInterceptors[i](result);
+      if (nextConfig instanceof Promise) {
+        const res = await nextConfig;
+        if (res) result = res;
+      } else if (nextConfig) {
         result = nextConfig;
       }
     }
-
     return result;
   }
 
   /**
-   * @ru Последовательно применяет все перехватчики к ответу.
+   * Применяет респонс-интерцепторы аналогичным гибридным способом.
    */
-  async applyResponse(response: {
-    status: number;
-    headers: Record<string, string | string[]>;
-    body: any;
-    url: string;
-  }) {
-    if (this.responseInterceptors.length === 0) return response;
+  applyResponse(response: any): any {
     let result = response;
+    const len = this.responseInterceptors.length;
 
-    for (const interceptor of this.responseInterceptors) {
-      const nextResponse = await interceptor(result);
-      if (nextResponse) {
+    for (let i = 0; i < len; i++) {
+      const nextResponse = this.responseInterceptors[i](result);
+
+      if (nextResponse instanceof Promise) {
+        return this.applyResponseAsync(i, nextResponse, result);
+      }
+
+      if (nextResponse) result = nextResponse;
+    }
+    return result;
+  }
+
+  private async applyResponseAsync(
+    startIndex: number,
+    currentPromise: Promise<any>,
+    currentResult: any,
+  ): Promise<any> {
+    let result = currentResult;
+    const resolved = await currentPromise;
+    if (resolved) result = resolved;
+
+    const len = this.responseInterceptors.length;
+    for (let i = startIndex + 1; i < len; i++) {
+      const nextResponse = this.responseInterceptors[i](result);
+      if (nextResponse instanceof Promise) {
+        const res = await nextResponse;
+        if (res) result = res;
+      } else if (nextResponse) {
         result = nextResponse;
       }
     }
-
     return result;
   }
 
-  /**
-   * @ru Очищает все зарегистрированные перехватчики.
-   */
   clear(): void {
     this.requestInterceptors = [];
     this.responseInterceptors = [];
+    this.hasRequest = false;
+    this.hasResponse = false;
   }
 }
