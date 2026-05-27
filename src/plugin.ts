@@ -3,20 +3,12 @@ import type {
   InternalRequest,
   HttpClientOptions,
   HttpResponse,
-} from "@hyperttp/core";
+  PluginContext,
+} from "@hyperttp/types";
 import { InterceptorManager } from "./utils/InterceptorManager.js";
 import type { InterceptorOptions } from "./types/interceptors.js";
 
-export type Method =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "OPTIONS"
-  | "DELETE"
-  | "HEAD";
-
-declare module "@hyperttp/core" {
+declare module "@hyperttp/types" {
   interface PluginContext {
     interceptors?: InterceptorManager;
   }
@@ -26,39 +18,66 @@ declare module "@hyperttp/core" {
   }
 }
 
+/**
+ * @ru Плагин для интеграции кастомных интерцепторов запросов и ответов (Axios-like Interceptors).
+ * @en Plugin for integrating custom request and response interceptors (Axios-like Interceptors).
+ * @returns HyperPlugin object instance.
+ */
 export function withInterceptors(): HyperPlugin {
   let manager: InterceptorManager;
 
   return {
     name: "hyperttp-interceptors",
-    phase: "PREPARE",
-    enabled: (config: HttpClientOptions) => !!config.interceptors?.enabled,
 
-    setup(core) {
+    /**
+     * @ru Проверяет активацию плагина на основе переданной конфигурации.
+     * @en Evaluates plugin activation based on the provided client configuration.
+     */
+    enabled: (config: HttpClientOptions): boolean =>
+      !!config.interceptors?.enabled,
+
+    /**
+     * @ru Хук инициализации. Создает менеджер интерцепторов и регистрирует его в контексте ядра.
+     * @en Initialization hook. Creates the interceptor manager and registers it within the core context.
+     * @param core - Shared plugin orchestration context.
+     */
+    setup(core: PluginContext): void {
       manager = new InterceptorManager();
       core.interceptors = manager;
     },
 
-    wrapDispatch: (next) => {
-      return <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
-        if (!manager.hasRequest && !manager.hasResponse) {
-          return next<T>(req);
-        }
+    /**
+     * @ru Перехватчик фазы запроса. Последовательно применяет все зарегистрированные интерцепторы к конфигурации запроса.
+     * @en Request phase interceptor hook. Sequentially applies all registered interceptors to the request configuration.
+     * @param req - Contextual internal request parameters.
+     */
+    async onRequest(req: InternalRequest): Promise<void> {
+      if (!manager.hasRequest) return;
 
-        const reqResult = manager.applyRequest(req);
+      const reqResult = await manager.applyRequest(req);
+      if (reqResult) {
+        // Накатываем изменения на текущую ссылку запроса, если интерцептор вернул обновленный объект
+        Object.assign(req, reqResult);
+      }
+    },
 
-        if (reqResult instanceof Promise) {
-          return reqResult.then((finalReq) => {
-            return next<T>(finalReq || req).then((res) =>
-              manager.applyResponse(res),
-            );
-          });
-        }
+    /**
+     * @ru Перехватчик фазы успешного ответа. Пропускает объект ответа через цепочку пользовательских интерцепторов модификации.
+     * @en Response phase interceptor hook. Passes the response object through the chain of custom modification interceptors.
+     * @param res - Output HTTP client response reference.
+     * @param req - Contextual internal request parameters.
+     */
+    async onResponse(
+      res: HttpResponse<any>,
+      req: InternalRequest,
+    ): Promise<void> {
+      if (!manager.hasResponse) return;
 
-        return next<T>(reqResult || req).then((res) =>
-          manager.applyResponse(res),
-        ) as Promise<HttpResponse<T>>;
-      };
+      const resResult = await manager.applyResponse(res);
+      if (resResult) {
+        // Мутируем объект ответа перед передачей в пользовательский код
+        Object.assign(res, resResult);
+      }
     },
   };
 }
