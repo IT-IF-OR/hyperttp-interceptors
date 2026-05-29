@@ -5,41 +5,41 @@ import {
 } from "../types/interceptors.js";
 
 /**
- * @ru Менеджер перехватчиков (интерцепторов) для сквозной обработки запросов и ответов.
- * Использует гибридный цикл (fast-path): выполняется синхронно до тех пор, пока не встретит Promise.
  * @en Interceptor manager for pipeline execution of requests and responses.
  * Uses a hybrid loop (fast-path): runs synchronously until a Promise is encountered.
+ * @ru Менеджер перехватчиков (интерцепторов) для сквозной обработки запросов и ответов.
+ * Использует гибридный цикл (fast-path): выполняется синхронно до тех пор, пока не встретит Promise.
  */
 export class InterceptorManager {
   /**
-   * @private
-   * @ru Массив зарегистрированных перехватчиков запроса.
    * @en Array of registered request interceptors.
+   * @ru Массив зарегистрированных перехватчиков запроса.
+   * @private
    */
   private requestInterceptors: RequestInterceptor[] = [];
 
   /**
-   * @private
-   * @ru Массив зарегистрированных перехватчиков ответа.
    * @en Array of registered response interceptors.
+   * @ru Массив зарегистрированных перехватчиков ответа.
+   * @private
    */
   private responseInterceptors: ResponseInterceptor[] = [];
 
   /**
-   * @ru Флаг наличия активных перехватчиков запроса для быстрого ветвления.
    * @en Flag indicating presence of active request interceptors for fast branch short-circuiting.
+   * @ru Флаг наличия активных перехватчиков запроса для быстрого ветвления.
    */
   public hasRequest = false;
 
   /**
-   * @ru Флаг наличия активных перехватчиков ответа для быстрого ветвления.
    * @en Flag indicating presence of active response interceptors for fast branch short-circuiting.
+   * @ru Флаг наличия активных перехватчиков ответа для быстрого ветвления.
    */
   public hasResponse = false;
 
   /**
-   * @ru Регистрирует новый перехватчик запроса в конвейере.
    * @en Registers a new request interceptor in the pipeline.
+   * @ru Регистрирует новый перехватчик запроса в конвейере.
    * @param interceptor - Target request interceptor function.
    */
   addRequest(interceptor: RequestInterceptor): void {
@@ -48,8 +48,8 @@ export class InterceptorManager {
   }
 
   /**
-   * @ru Регистрирует новый перехватчик ответа в конвейере.
    * @en Registers a new response interceptor in the pipeline.
+   * @ru Регистрирует новый перехватчик ответа в конвейере.
    * @param interceptor - Target response interceptor function.
    */
   addResponse(interceptor: ResponseInterceptor): void {
@@ -58,8 +58,8 @@ export class InterceptorManager {
   }
 
   /**
-   * @ru Последовательно применяет цепочку перехватчиков к конфигурации запроса.
    * @en Sequentially applies the chain of interceptors to the request configuration.
+   * @ru Последовательно применяет цепочку перехватчиков к конфигурации запроса.
    * @param config - Initial internal request configuration object.
    * @returns Modified configuration or a Promise resolving to it.
    */
@@ -67,54 +67,42 @@ export class InterceptorManager {
     config: InternalRequest,
   ): InternalRequest | Promise<InternalRequest> {
     let result = config;
-    const len = this.requestInterceptors.length;
+    for (let i = 0; i < this.requestInterceptors.length; i++) {
+      const next = this.requestInterceptors[i](result);
 
-    for (let i = 0; i < len; i++) {
-      const nextConfig = this.requestInterceptors[i](result);
-
-      if (nextConfig instanceof Promise) {
-        return this.applyRequestAsync(i, nextConfig, result);
+      if (next instanceof Promise) {
+        return this.applyRequestAsync(i + 1, next, result);
       }
-
-      if (nextConfig) result = nextConfig;
+      if (next) result = next;
     }
     return result;
   }
 
   /**
-   * @private
-   * @ru Асинхронный фолбек для обработки оставшейся цепочки запросов после обнаружения Promise.
    * @en Asynchronous fallback to process the remaining request chain after encountering a Promise.
+   * @ru Асинхронный фолбек для обработки оставшейся цепочки запросов после обнаружения Promise.
    * @param startIndex - Index of the interceptor that returned a Promise.
    * @param currentPromise - The pending Promise from the current interceptor step.
    * @param currentResult - Cumulative configuration result before the Promise step.
+   * @private
    */
   private async applyRequestAsync(
     startIndex: number,
     currentPromise: Promise<InternalRequest | void>,
     currentResult: InternalRequest,
   ): Promise<InternalRequest> {
-    let result = currentResult;
+    let result = (await currentPromise) ?? currentResult;
 
-    const resolved = await currentPromise;
-    if (resolved) result = resolved;
-
-    const len = this.requestInterceptors.length;
-    for (let i = startIndex + 1; i < len; i++) {
-      const nextConfig = this.requestInterceptors[i](result);
-      if (nextConfig instanceof Promise) {
-        const res = await nextConfig;
-        if (res) result = res;
-      } else if (nextConfig) {
-        result = nextConfig;
-      }
+    for (let i = startIndex; i < this.requestInterceptors.length; i++) {
+      const next = this.requestInterceptors[i](result);
+      result = (next instanceof Promise ? await next : next) ?? result;
     }
     return result;
   }
 
   /**
-   * @ru Последовательно применяет цепочку перехватчиков к полученному объекту ответа.
    * @en Sequentially applies the chain of interceptors to the incoming response container.
+   * @ru Последовательно применяет цепочку перехватчиков к полученному объекту ответа.
    * @template T - Type mapping descriptor for the expected response payload body.
    * @param response - Target HTTP response context wrapper.
    * @returns Transformed response context or a Promise resolving to it.
@@ -138,13 +126,13 @@ export class InterceptorManager {
   }
 
   /**
-   * @private
-   * @ru Асинхронный фолбек для обработки оставшейся цепочки ответов после обнаружения Promise.
    * @en Asynchronous fallback to process the remaining response chain after encountering a Promise.
+   * @ru Асинхронный фолбек для обработки оставшейся цепочки ответов после обнаружения Promise.
    * @template T - Type mapping descriptor for the expected response payload body.
    * @param startIndex - Index of the interceptor that returned a Promise.
    * @param currentPromise - The pending Promise from the current interceptor step.
    * @param currentResult - Cumulative response result before the Promise step.
+   * @private
    */
   private async applyResponseAsync<T>(
     startIndex: number,
@@ -169,8 +157,8 @@ export class InterceptorManager {
   }
 
   /**
-   * @ru Полностью очищает списки зарегистрированных перехватчиков и сбрасывает флаги.
    * @en Completely flushes internal interceptor registers and resets state indicators.
+   * @ru Полностью очищает списки зарегистрированных перехватчиков и сбрасывает флаги.
    */
   clear(): void {
     this.requestInterceptors = [];
