@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.1]
+
+### Fixed
+
+- Enable interceptors configured through client options without requiring explicit `enabled: true`.
+- Use each client's interceptor manager when a plugin instance is shared between clients.
+
+### Changed
+
+- Updated the `@hyperttp/types` peer dependency to `^0.4.2`.
+
 ## [2.0.0] - 2026-08-22
 
 ### Changed

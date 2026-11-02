@@ -29,14 +29,17 @@ function register<T>(value: T | readonly T[] | undefined, add: (interceptor: T) 
 }
 
 export function withInterceptors(options?: InterceptorOptions): HyperPlugin {
-  let manager: InterceptorManager;
+  let fallbackManager: InterceptorManager | undefined;
 
   return {
     name: "hyperttp-interceptors",
     enabled: (config: HyperClientOptions): boolean =>
-      config.interceptors?.enabled ?? options?.enabled ?? options !== undefined,
+      config.interceptors?.enabled ??
+      options?.enabled ??
+      (config.interceptors !== undefined || options !== undefined),
     setup(ctx: PluginContext): void {
-      manager = new InterceptorManager();
+      const manager = new InterceptorManager();
+      fallbackManager = manager;
       const configured = ctx.config.interceptors;
       register<RequestInterceptor>(options?.request, (interceptor) =>
         manager.addRequest(interceptor),
@@ -57,7 +60,8 @@ export function withInterceptors(options?: InterceptorOptions): HyperPlugin {
       ctx?: PluginContext,
       reqCtx?: RequestContext,
     ): Promise<SendRequest | void> {
-      if (!manager.hasRequest) return;
+      const manager = ctx ? ctx.interceptors : fallbackManager;
+      if (!manager?.hasRequest) return;
       return manager.applyRequest(req, ctx, reqCtx);
     },
     async onResponse(
@@ -66,7 +70,8 @@ export function withInterceptors(options?: InterceptorOptions): HyperPlugin {
       ctx?: PluginContext,
       reqCtx?: RequestContext,
     ): Promise<UniversalResponse | void> {
-      if (!manager.hasResponse) return;
+      const manager = ctx ? ctx.interceptors : fallbackManager;
+      if (!manager?.hasResponse) return;
       return manager.applyResponse(res, req, ctx, reqCtx);
     },
   };
