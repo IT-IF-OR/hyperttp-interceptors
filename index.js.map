@@ -2,6 +2,6 @@
   "version": 3,
   "sources": ["../src/index.ts"],
   "sourcesContent": ["export { withInterceptors } from \"./plugin.js\";\nexport * from \"./utils/InterceptorManager.js\";\nexport type * from \"./types/interceptors.js\";\n"],
-  "mappings": "aAAA,OAAS,qBAAwB,cACjC,WAAc",
-  "names": []
+  "mappings": "AAAA,OAAS,oBAAAA,MAAwB,cACjC,WAAc",
+  "names": ["withInterceptors"]
 }

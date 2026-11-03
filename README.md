@@ -25,9 +25,11 @@ import { HyperClient } from "hyperttp";
 import { withInterceptors } from "@hyperttp/interceptors";
 
 const client = new HyperClient({
-  plugins: [withInterceptors({
-    onRequest: (request) => request,
-  })],
+  plugins: [
+    withInterceptors({
+      onRequest: (request) => request,
+    }),
+  ],
 });
 ```
 
