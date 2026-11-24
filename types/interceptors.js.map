@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["interceptors.js"],
+  "sourcesContent": ["export {};\n//# sourceMappingURL=interceptors.js.map"],
+  "mappings": "aAAA",
+  "names": []
+}
